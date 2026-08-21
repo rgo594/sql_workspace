@@ -1,0 +1,19 @@
+# SQL workspace files
+workspace/inputs/*
+workspace/outputs/*
+workspace/archive/inputs/*
+workspace/archive/outputs/*
+
+.workspace_history
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Environment / secrets
+.env
+.venv/
+venv/

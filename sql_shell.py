@@ -11,6 +11,12 @@ import os
 from pathlib import Path
 import shutil
 import json
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=r".*doesn't match a supported version.*",
+)
 
 sql_editor_fp = os.environ["SQL_WORKSPACE_FILEPATH"]
 os.makedirs(sql_editor_fp, exist_ok=True)

@@ -10,6 +10,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import shutil
+import json
 
 sql_editor_fp = os.environ["SQL_WORKSPACE_FILEPATH"]
 os.makedirs(sql_editor_fp, exist_ok=True)
@@ -17,11 +18,14 @@ os.makedirs(sql_editor_fp, exist_ok=True)
 workspace_fp = f"{sql_editor_fp}/workspace"
 os.makedirs(workspace_fp, exist_ok=True)
 
-histfile = os.path.expanduser(f"{sql_editor_fp}/.workspace_history")
-Path(histfile).touch(exist_ok=True)
+workspace_history_fp = os.path.expanduser(f"{sql_editor_fp}/.workspace_history")
+Path(workspace_history_fp).touch(exist_ok=True)
 
-readline.read_history_file(histfile)
-atexit.register(readline.write_history_file, histfile)
+readline.read_history_file(workspace_history_fp)
+atexit.register(readline.write_history_file, workspace_history_fp)
+
+query_history_fp = os.path.expanduser(f"{sql_editor_fp}/.query_history.jsonl")
+Path(query_history_fp).touch(exist_ok=True)
 
 inputs_fp = f"{workspace_fp}/inputs"
 os.makedirs(inputs_fp, exist_ok=True)
@@ -35,6 +39,10 @@ os.makedirs(inputs_archive_fp, exist_ok=True)
 outputs_archive_fp = f"{workspace_fp}/archive/outputs"
 os.makedirs(outputs_archive_fp, exist_ok=True)
 
+def log_query(log_file, metadata):
+    with open(log_file, "a") as f:
+        f.write(json.dumps(metadata) + "\n")
+
 def fetch_archive_count(file):
   with open(file, "a+") as f:
     f.seek(0)
@@ -47,11 +55,19 @@ def fetch_archive_count(file):
 
   return n
 
+# def sp_run(command):
+#   result = subprocess.run(command, shell=True, text=True)
+#   print(result.stdout)
+#   if result.stderr:
+#     print("Error:", result.stderr)
+
 def sp_run(command):
-  result = subprocess.run(command, shell=True, text=True, capture_output=True)
-  print(result.stdout)
-  if result.stderr:
-    print("Error:", result.stderr)
+    process = subprocess.Popen(command)
+
+    try:
+        process.wait()
+    except KeyboardInterrupt:
+        process.wait()
 
 def main():
   while True:
@@ -66,12 +82,15 @@ def main():
       py = "python3"
 
       if command == "/r":
-        execute_input_file: str = (
-            f"{py} {sql_editor_fp}/query_runner.py "
-            f"-fi {args.get(0, 1)} -fo {args.get(0, 1)}"
-        )
-        sp_run(execute_input_file)
+          execute_input_file = [
+              py,
+              "-u",
+              f"{sql_editor_fp}/query_runner.py",
+              "-wid",
+              str(args.get(0, 1)),
+          ]
 
+          sp_run(execute_input_file)
       elif command == "/cqi":
           input_files = Path(inputs_fp).glob("input_*.sql")
 
@@ -149,12 +168,14 @@ def main():
         sp_run(" ".join(parts[1:]))
 
       else:
-        execute_input_file: str = (
-            f'{py} {sql_editor_fp}/query_runner.py -q "{raw}"'
-        )
+        sp_run([
+            py,
+            "-u",
+            f"{sql_editor_fp}/query_runner.py",
+            "-q",
+            raw,
+        ])
 
-        print(execute_input_file)
-        sp_run(execute_input_file)
     except KeyboardInterrupt:
       print("\n")
       continue

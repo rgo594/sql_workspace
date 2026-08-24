@@ -1,7 +1,10 @@
 import os
 import snowflake.connector
 from cryptography.hazmat.primitives import serialization
-
+from pathlib import Path
+from datetime import datetime
+from sql_shell import query_history_fp, log_query
+from time import perf_counter
 
 def get_connection():
     private_key = serialization.load_pem_private_key(
@@ -19,19 +22,46 @@ def get_connection():
         schema="dbt_rogara",
     )
 
+def execute_to_csv(query, workspace_id, output_file):
 
-def execute_to_csv(query, output_file):
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query)
+            status = "success"
+            start = perf_counter()
 
-            first = True
+            try:
+                print(f"Executing query: {query}")
+                cur.execute(query)
 
-            for df in cur.fetch_pandas_batches():
-                df.to_csv(
-                    output_file,
-                    mode="w" if first else "a",
-                    header=first,
-                    index=False,
-                )
-                first = False
+                first = True
+
+                for df in cur.fetch_pandas_batches():
+                    df.to_csv(
+                        output_file,
+                        mode="w" if first else "a",
+                        header=first,
+                        index=False,
+                    )
+                    first = False
+
+            except KeyboardInterrupt:
+                status = "cancelled"
+                raise
+
+            except Exception:
+                status = "failed"
+                raise
+
+            finally:
+                execution_time = perf_counter() - start
+
+                metadata = {
+                    "executed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "workspace_id": workspace_id,
+                    "status": status,
+                    "query_id": cur.sfqid,
+                    "row_count": cur.rowcount,
+                    "execution_time_seconds": round(execution_time, 3)
+                }
+                print(f"LOGGING: {metadata}", flush=True)
+                log_query(query_history_fp, metadata)

@@ -5,6 +5,7 @@ workspace/archive/inputs/*
 workspace/archive/outputs/*
 
 .workspace_history
+.query_history.jsonl
 
 # macOS
 .DS_Store

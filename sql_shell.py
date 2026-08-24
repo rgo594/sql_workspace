@@ -9,6 +9,7 @@ import shlex
 from datetime import datetime
 import os
 from pathlib import Path
+import shutil
 
 sql_editor_fp = os.environ["SQL_WORKSPACE_FILEPATH"]
 os.makedirs(sql_editor_fp, exist_ok=True)
@@ -21,7 +22,6 @@ Path(histfile).touch(exist_ok=True)
 
 readline.read_history_file(histfile)
 atexit.register(readline.write_history_file, histfile)
-
 
 inputs_fp = f"{workspace_fp}/inputs"
 os.makedirs(inputs_fp, exist_ok=True)
@@ -66,42 +66,92 @@ def main():
       py = "python3"
 
       if command == "/r":
-        execute_input_file:str = f"{py} {sql_editor_fp}/query_runner.py -fi {args.get(0, 1)}  -fo {args.get(1,1)}"
+        execute_input_file: str = (
+            f"{py} {sql_editor_fp}/query_runner.py "
+            f"-fi {args.get(0, 1)} -fo {args.get(0, 1)}"
+        )
         sp_run(execute_input_file)
+
       elif command == "/cqi":
-        create_input_file:str = f"touch {inputs_fp}/input_{args.get(0, 1)}.sql"
-        sp_run(create_input_file)
-      elif command == "/bqi":
-        archive_count = fetch_archive_count(f"{inputs_archive_fp}/.counter_input.txt")
-        archive_input_file:str = f"cp {inputs_fp}/input_{args.get(0, 1)}.sql {inputs_archive_fp}/archived_input_{archive_count}.sql"
-        sp_run(archive_input_file)
-      elif command == "/bqo":
-        archive_count = fetch_archive_count(f"{outputs_archive_fp}/.counter_output.txt")
-        archive_output_file:str = f"cp {outputs_fp}/output_{args.get(0, 1)}.csv {outputs_archive_fp}/archived_output_{archive_count}.csv"
-        sp_run(archive_output_file)
+          input_files = Path(inputs_fp).glob("input_*.sql")
+
+          numbers = [
+              int(file.stem.split("_")[-1])
+              for file in input_files
+          ]
+
+          next_number = max(numbers, default=0) + 1
+
+          print(next_number)
+          input_file = Path(inputs_fp) / f"input_{next_number}.sql"
+          input_file.touch()
+
+      elif command == "/bq":
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        number = args.get(0, 1)
+
+        input_file = Path(inputs_fp) / f"input_{number}.sql"
+        archive_input_file = (
+            Path(inputs_archive_fp) / f"archived_input_{number}_{ts}.sql"
+        )
+        shutil.copy(input_file, archive_input_file)
+
+        output_file = Path(outputs_fp) / f"output_{number}.csv"
+        archive_output_file = (
+            Path(outputs_archive_fp) / f"archived_output_{number}_{ts}.csv"
+        )
+        shutil.copy(output_file, archive_output_file)
+
+      elif command == "/bqa":
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        for file in Path(inputs_fp).glob("*.sql"):
+            number = file.stem.split("_")[-1]
+            archive_file = (
+                Path(inputs_archive_fp) / f"archived_input_{number}_{ts}.sql"
+            )
+            shutil.copy(file, archive_file)
+
+        for file in Path(outputs_fp).glob("*.csv"):
+            number = file.stem.split("_")[-1]
+            archive_file = (
+                Path(outputs_archive_fp) / f"archived_output_{number}_{ts}.csv"
+            )
+            shutil.copy(file, archive_file)
+
       elif command == "/dqi":
-        delete_input_file:str = f"rm {inputs_fp}/input_{args.get(0, 1)}.sql"
-        sp_run(delete_input_file)
+        input_file = Path(inputs_fp) / f"input_{args.get(0, 1)}.sql"
+        input_file.unlink()
+
       elif command == "/dqo":
-        delete_output_file:str = f"rm {outputs_fp}/output_{args.get(0, 1)}.csv"
-        sp_run(delete_output_file)
+        output_file = Path(outputs_fp) / f"output_{args.get(0, 1)}.csv"
+        output_file.unlink()
+
       elif command == "/dqia":
-        delete_input_file:str = f"rm {inputs_fp}/*.sql"
-        sp_run(delete_input_file)
+        for file in Path(inputs_fp).glob("*.sql"):
+            file.unlink()
+
       elif command == "/dqoa":
-        delete_output_file:str = f"rm {outputs_fp}/*.csv"
-        sp_run(delete_output_file)
+        for file in Path(outputs_fp).glob("*.csv"):
+            file.unlink()
+
       elif command == "/ow":
         sp_run(f"code {sql_editor_fp}/workspace")
+
       elif command.lower() == "/exit":
         print("Exiting shell...")
         break
+
       elif command.strip() == "":
-          continue
+        continue
+
       elif command == "/":
         sp_run(" ".join(parts[1:]))
+
       else:
-        execute_input_file:str = f'{py} {sql_editor_fp}/query_runner.py -q "{raw}"'
+        execute_input_file: str = (
+            f'{py} {sql_editor_fp}/query_runner.py -q "{raw}"'
+        )
 
         print(execute_input_file)
         sp_run(execute_input_file)

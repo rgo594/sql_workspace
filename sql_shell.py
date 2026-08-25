@@ -12,7 +12,9 @@ from pathlib import Path
 import shutil
 import json
 import warnings
-
+from snowflake_backend import get_connection, execute_to_csv
+ 
+#TODO remove this and add a virtual environment
 warnings.filterwarnings(
     "ignore",
     message=r".*doesn't match a supported version.*",
@@ -61,12 +63,6 @@ def fetch_archive_count(file):
 
   return n
 
-# def sp_run(command):
-#   result = subprocess.run(command, shell=True, text=True)
-#   print(result.stdout)
-#   if result.stderr:
-#     print("Error:", result.stderr)
-
 def sp_run(command):
     process = subprocess.Popen(command)
 
@@ -87,16 +83,23 @@ def main():
       args = dict(enumerate(parts[1:]))
       py = "python3"
 
+      conn = get_connection()
       if command == "/r":
-          execute_input_file = [
-              py,
-              "-u",
-              f"{sql_editor_fp}/query_runner.py",
-              "-wid",
-              str(args.get(0, 1)),
-          ]
+        workspace_id = args.get(0, 1)
 
-          sp_run(execute_input_file)
+        input_file = Path(inputs_fp) / f"input_{workspace_id}.sql"
+        output_file = Path(outputs_fp) / f"output_{workspace_id}.csv"
+
+        with open(input_file, "r") as f:
+            query_text = f.read()
+
+        metadata = execute_to_csv(
+            query=query_text,
+            workspace_id=int(workspace_id),
+            output_file=output_file,
+            conn=conn
+        )
+        log_query(query_history_fp, metadata)
       elif command == "/cqi":
           input_files = Path(inputs_fp).glob("input_*.sql")
 
@@ -119,13 +122,15 @@ def main():
         archive_input_file = (
             Path(inputs_archive_fp) / f"archived_input_{number}_{ts}.sql"
         )
-        shutil.copy(input_file, archive_input_file)
+        
+        shutil.copy(input_file, archive_input_file) if input_file.exists() else print(f"Input file {input_file} does not exist.")
 
         output_file = Path(outputs_fp) / f"output_{number}.csv"
         archive_output_file = (
             Path(outputs_archive_fp) / f"archived_output_{number}_{ts}.csv"
         )
-        shutil.copy(output_file, archive_output_file)
+
+        shutil.copy(output_file, archive_output_file) if output_file.exists() else print(f"Output file {output_file} does not exist.")
 
       elif command == "/bqa":
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -174,13 +179,14 @@ def main():
         sp_run(" ".join(parts[1:]))
 
       else:
-        sp_run([
-            py,
-            "-u",
-            f"{sql_editor_fp}/query_runner.py",
-            "-q",
-            raw,
-        ])
+        metadata = execute_to_csv(
+            query=raw,
+            workspace_id=None,
+            output_file=Path(outputs_fp) / "output_1.csv",
+            conn=conn
+        )
+
+        log_query(query_history_fp, metadata)
 
     except KeyboardInterrupt:
       print("\n")
